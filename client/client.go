@@ -1,4 +1,3 @@
-// Package client implements a client for MdbServer
 package client
 
 import (
@@ -10,7 +9,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	pb "github.com/rickcollette/primodb/primod/primodproto"
+	pb "github.com/rickcollette/primodb/primodb/primodproto"
 )
 
 const doPanic = true
