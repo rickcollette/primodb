@@ -1,0 +1,48 @@
+syntax = "proto3";
+option go_package="rickcollette/primodb/mdbserver/mdbserverpb";
+package mdbserverpb;
+
+enum StatusCode {
+    OK = 0;
+    FAIL = 1;
+}
+
+service Mdb {
+    rpc Get(GetRequest) returns (GetResponse) {}
+    rpc Set(SetRequest) returns (SetResponse) {}
+    rpc Del(DelRequest) returns (DelResponse) {}
+}
+
+message GetRequest {
+    string key = 1;
+    string clientId = 2;
+}
+
+message GetResponse {
+    string value = 1;
+    string resp_msg = 2;
+    StatusCode statusCode = 3;
+}
+
+message SetRequest {
+    string key = 1;
+    string value = 2;
+    string clientId = 3;
+}
+
+message SetResponse {
+    string message = 1;
+    string resp_msg = 2;
+    StatusCode statusCode = 3;
+}
+
+message DelRequest {
+    string key = 1;
+    string clientId = 2;
+}
+
+message DelResponse {
+    string message = 1;
+    string resp_msg = 2;
+    StatusCode statusCode = 3;
+}
