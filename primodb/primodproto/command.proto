@@ -1,6 +1,8 @@
 syntax = "proto3";
-option go_package="github.com/rickcollette/primodb/primodb/primodproto";
+
 package primodproto;
+
+option go_package = "github.com/rickcollette/primodb/primodproto";
 
 enum StatusCode {
     OK = 0;
@@ -8,41 +10,58 @@ enum StatusCode {
 }
 
 service PrimoDB {
-    rpc Get(GetRequest) returns (GetResponse) {}
-    rpc Set(SetRequest) returns (SetResponse) {}
-    rpc Del(DelRequest) returns (DelResponse) {}
+    rpc Create(CreateRequest) returns (CreateResponse) {}
+    rpc Read(ReadRequest) returns (ReadResponse) {}
+    rpc Update(UpdateRequest) returns (UpdateResponse) {}
+    rpc Delete(DeleteRequest) returns (DeleteResponse) {}
 }
 
-message GetRequest {
+message ReadRequest {
     string key = 1;
     string clientId = 2;
+    string database = 3; // Added field for the database name
 }
 
-message GetResponse {
+message ReadResponse {
     string value = 1;
     string resp_msg = 2;
-    StatusCode statusCode = 3;
+    StatusCode status_code = 3;
 }
 
-message SetRequest {
+message CreateRequest {
     string key = 1;
     string value = 2;
     string clientId = 3;
+    string database = 4;
 }
 
-message SetResponse {
+message CreateResponse {
     string message = 1;
     string resp_msg = 2;
-    StatusCode statusCode = 3;
+    StatusCode status_code = 3;
 }
 
-message DelRequest {
+message DeleteRequest {
     string key = 1;
     string clientId = 2;
+    string database = 3;
 }
 
-message DelResponse {
+message DeleteResponse {
     string message = 1;
     string resp_msg = 2;
-    StatusCode statusCode = 3;
+    StatusCode status_code = 3;
+}
+
+message UpdateRequest {
+    string key = 1;
+    string value = 2;
+    string clientId = 3;
+    string database = 4;
+}
+
+message UpdateResponse {
+    string message = 1;
+    string resp_msg = 2;
+    StatusCode status_code = 3;
 }

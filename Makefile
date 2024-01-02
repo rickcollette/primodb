@@ -18,8 +18,8 @@ proto:
 copy_config:
 	mkdir -p dist/config
 	mkdir -p dist/data
-	cp config/client.yaml dist/config
-	cp config/server.yaml dist/config
+	cp clientconfig/client.yaml dist/config
+	cp serverconfig/server.yaml dist/config
 
 # Build client binary
 build_client: proto
@@ -33,3 +33,4 @@ build_server: proto
 clean:
 	rm -f $(CLIENT_BIN_PATH) $(SERVER_BIN_PATH)
 	rm -rf dist
+	rm primodb/primodproto/*.pb.go

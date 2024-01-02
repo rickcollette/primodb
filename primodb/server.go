@@ -9,7 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/rickcollette/primodb/config"
+	"github.com/rickcollette/primodb/serverconfig"
 	pb "github.com/rickcollette/primodb/primodb/primodproto"
 	"google.golang.org/grpc"
 )
@@ -17,58 +17,68 @@ import (
 const serverStartMsg = "PrimoDB server started."
 
 type server struct {
-	db     *database
-	config *config.ServerConfig
-	pb.UnimplementedPrimoDBServer
+    db     *Server // Use *Server instead of *database
+    config *serverconfig.ServerConfig
+    pb.UnimplementedPrimoDBServer
 }
 
-func (s *server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
-	log.Printf("[Client: %s] GET: %s", req.ClientId, req.Key)
-	value, err := s.db.Get(req.Key)
-	respMsg := ""
-	if err != nil {
-		respMsg = err.Error()
-	}
-	return &pb.GetResponse{Value: value, RespMsg: respMsg, StatusCode: 200}, nil
+func (s *server) Create(ctx context.Context, req *pb.CreateRequest) (*pb.CreateResponse, error) {
+    log.Printf("[Client: %s] SET: %s in database: %s", req.ClientId, req.Key, req.Database)
+    value, err := s.db.Create(req.Database, req.Key, req.Value) // Updated to include database
+    respMsg := ""
+    if err != nil {
+        respMsg = err.Error()
+    }
+    return &pb.CreateResponse{Message: value, RespMsg: respMsg, StatusCode: 201}, nil
 }
 
-func (s *server) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, error) {
-	log.Printf("[Client: %s] SET: %s", req.ClientId, req.Key)
-	value, err := s.db.Set(req.Key, req.Value)
-	respMsg := ""
-	if err != nil {
-		respMsg = err.Error()
-	}
-	return &pb.SetResponse{Message: value, RespMsg: respMsg, StatusCode: 201}, nil
+func (s *server) Read(ctx context.Context, req *pb.ReadRequest) (*pb.ReadResponse, error) {
+    log.Printf("[Client: %s] GET: %s in database: %s", req.ClientId, req.Key, req.Database)
+    value, err := s.db.Read(req.Database, req.Key) // Updated to include database
+    respMsg := ""
+    if err != nil {
+        respMsg = err.Error()
+    }
+    return &pb.ReadResponse{Value: value, RespMsg: respMsg, StatusCode: 200}, nil
 }
 
-func (s *server) Del(ctx context.Context, req *pb.DelRequest) (*pb.DelResponse, error) {
-	log.Printf("[Client: %s] DEL: %s", req.ClientId, req.Key)
-	value, err := s.db.Del(req.Key)
-	respMsg := ""
-	if err != nil {
-		respMsg = err.Error()
-	}
-	return &pb.DelResponse{Message: value, RespMsg: respMsg, StatusCode: 204}, nil
+func (s *server) Update(ctx context.Context, req *pb.UpdateRequest) (*pb.UpdateResponse, error) {
+    log.Printf("[Client: %s] UPDATE: %s in database: %s", req.ClientId, req.Key, req.Database)
+    value, err := s.db.Update(req.Database, req.Key, req.Value) // Updated to include database
+    respMsg := ""
+    if err != nil {
+        respMsg = err.Error()
+    }
+    return &pb.UpdateResponse{Message: value, RespMsg: respMsg, StatusCode: 200}, nil
 }
 
+func (s *server) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
+    log.Printf("[Client: %s] DEL: %s in database: %s", req.ClientId, req.Key, req.Database)
+    value, err := s.db.Delete(req.Database, req.Key) // Updated to include database
+    respMsg := ""
+    if err != nil {
+        respMsg = err.Error()
+    }
+    return &pb.DeleteResponse{Message: value, RespMsg: respMsg, StatusCode: 204}, nil
+}
 
-func cleanup(db *database) {
-	if db != nil && db.walObj != nil {
-		db.walObj.Close()
-	}
+func cleanup(db *Server) { // Change parameter type to *Server
+    if db != nil && db.walObj != nil {
+        db.walObj.Close()
+    }
 }
 
 func Run() {
-    cfg := config.Config("server").(*config.ServerConfig)
+    cfg := serverconfig.Config("server").(*serverconfig.ServerConfig)
 
-    var db *database
+    var db *Server // Change type to *Server
     if cfg.Wal.UseS3 {
-        db = NewDb(cfg.Server.DB, cfg.Wal.Datadir, true, cfg.Wal.S3Config)
+        db = NewServer(cfg.Wal.Datadir, true, cfg.Wal.S3Config) // Use NewServer instead of NewDb
     } else {
-        db = NewDb(cfg.Server.DB, cfg.Wal.Datadir, false, config.S3Config{})
+        db = NewServer(cfg.Wal.Datadir, false, serverconfig.S3Config{}) // Use NewServer instead of NewDb
     }
     defer cleanup(db)
+
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)

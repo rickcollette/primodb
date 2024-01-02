@@ -6,4 +6,5 @@ message Record {
     string cmd = 1;
     string key = 2;
     string value = 3;
+    string database = 4; 
 }

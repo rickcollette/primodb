@@ -3,34 +3,39 @@ package main
 import (
 	"bufio"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/rickcollette/primodb/client"
+	"github.com/rickcollette/primodb/clientconfig"
 )
 
 const (
-	QuitCommand = ".quit"
-	ExitCommand = ".exit"
-	QCommand    = ".q"
-	HelpCommand = ".help"
+	QuitCommand    = ".quit"
+	ExitCommand    = ".exit"
+	QCommand       = ".q"
+	HelpCommand    = ".help"
 	VersionCommand = ".version"
 )
 
 type commands struct {
-	GET    string
-	SET    string
+	READ    string
+	CREATE    string
+	UPDATE string
 	DELETE string
 	DEL    string
 	ID     string
 }
 
+
 // CommandEnum enum of supported commands
 var (
-	CommandEnum = commands{"GET", "SET", "DELETE", "DEL", "ID"}
-	dbClient    = client.NewClient()
+	dbClient *client.PrimoDBClient
+	CommandEnum = commands{"READ", "CREATE", "UPDATE", "DELETE", "DEL", "ID"}
 	// ErrKeyNotFound raise when no value found for a given key
 	ErrKeyNotFound = errors.New("error: Key not found")
 	// ErrInvalidCommand raised when command passed from CLI
@@ -39,66 +44,63 @@ var (
 	ErrInvalidNoOfArguments = errors.New("error: Invalid number of arguments passed")
 	// ErrKeyValueMissing key or value not passed for a command
 	ErrKeyValueMissing = errors.New("error: Key or value not passed")
+	host               string
+	port               int
+	dbname             string
+	timeout            int
 )
-
+var CommandMap map[string]interface{}
 // CommandMap map of command enum => command method
-var CommandMap = map[string]interface{}{
-	CommandEnum.GET:    dbClient.Get,
-	CommandEnum.SET:    dbClient.Set,
-	CommandEnum.DELETE: dbClient.Del,
-	CommandEnum.DEL:    dbClient.Del,
-	CommandEnum.ID:     dbClient.GetID,
-}
+
 
 func processedCmd(input string) (string, string, string, error) {
-    if input == "" {
-        return "", "", "", ErrInvalidNoOfArguments
-    }
+	if input == "" {
+		return "", "", "", ErrInvalidNoOfArguments
+	}
 
-    input = strings.TrimSpace(input)
-    fields := strings.Fields(input)
+	input = strings.TrimSpace(input)
+	fields := strings.Fields(input)
 
-    // Handle special commands first
-    if len(fields) == 1 {
-        cmd := strings.ToLower(fields[0])
-        switch cmd {
-        case QuitCommand, VersionCommand, ExitCommand, QCommand, HelpCommand:
-            return cmd, "", "", nil
-        }
-    }
+	// Handle special commands first
+	if len(fields) == 1 {
+		cmd := strings.ToLower(fields[0])
+		switch cmd {
+		case QuitCommand, VersionCommand, ExitCommand, QCommand, HelpCommand:
+			return cmd, "", "", nil
+		}
+	}
 
-    // For other commands
-    if len(fields) < 2 {
-        return "", "", "", ErrKeyValueMissing
-    }
+	// For other commands
+	if len(fields) < 2 {
+		return "", "", "", ErrKeyValueMissing
+	}
 
-    cmd := strings.ToUpper(fields[0])
-    var key, value string
-    var err error
+	cmd := strings.ToUpper(fields[0])
+	var key, value string
+	var err error
 
-    switch cmd {
-    case CommandEnum.GET, CommandEnum.DELETE, CommandEnum.DEL:
-        if len(fields) != 2 {
-            err = ErrInvalidNoOfArguments
-        } else {
-            key = fields[1]
-        }
-    case CommandEnum.SET:
-        if len(fields) != 3 {
-            err = ErrInvalidNoOfArguments
-        } else {
-            key, value = fields[1], fields[2]
-        }
-    default:
-        err = ErrInvalidCommand
-    }
+	switch cmd {
+	case CommandEnum.READ, CommandEnum.DELETE, CommandEnum.DEL:
+		if len(fields) != 2 {
+			err = ErrInvalidNoOfArguments
+		} else {
+			key = fields[1]
+		}
+	case CommandEnum.CREATE, CommandEnum.UPDATE:
+		if len(fields) != 3 {
+			err = ErrInvalidNoOfArguments
+		} else {
+			key, value = fields[1], fields[2]
+		}
+	default:
+		err = ErrInvalidCommand
+	}
 
-    return cmd, key, value, err
+	return cmd, key, value, err
 }
 
-
 // cli is the main CLI loop
-func cli() {
+func cli(host string, port int, dbname string, timeout int) {
 	var result string
 	log.SetFlags(0)
 	reader := bufio.NewReader(os.Stdin)
@@ -129,8 +131,17 @@ func cli() {
 			fmt.Println("Exiting PrimoDB CLI.")
 			os.Exit(0)
 		case VersionCommand:
-			fmt.Println("PrimoDB ", dbClient.Version())
-			continue
+			if dbClient == nil {
+				fmt.Println("Error: Database client is not initialized.")
+			} else {
+				version, err := dbClient.Version()
+				if err != nil {
+					fmt.Println("Error getting version:", err)
+				} else {
+					fmt.Println("PrimoDB Version:", version)
+				}
+			}
+			continue		
 		case HelpCommand:
 			printHelp()
 			continue
@@ -160,8 +171,9 @@ func cli() {
 }
 func printHelp() {
 	fmt.Println("PrimoDB Commands:")
-	fmt.Println("  GET <key>             - Retrieve the value for the given key.")
-	fmt.Println("  SET <key> <value>     - Set the value for the given key.")
+	fmt.Println("  READ <key>             - Retrieve the value for the given key.")
+	fmt.Println("  CREATE <key> <value>     - Set the value for the given key.")
+	fmt.Println("  UPDATE <key> <value>  - Update the value for the given key.")
 	fmt.Println("  DELETE <key>          - Delete the value for the given key.")
 	fmt.Println("  DEL <key>             - Alias for DELETE.")
 	fmt.Println("  ID                    - Retrieve the client ID.")
@@ -169,8 +181,39 @@ func printHelp() {
 	fmt.Println("  .quit, .exit, .q      - Exit the CLI.")
 	fmt.Println("  .help                 - Display this help message.")
 }
-
 func main() {
-	fmt.Println("PrimoDB ", dbClient.Version())
-	cli()
+    flag.StringVar(&host, "host", "localhost", "host")
+    flag.IntVar(&port, "port", 9969, "port")
+    flag.StringVar(&dbname, "dbname", "primodb", "dbname")
+    flag.IntVar(&timeout, "timeout", 5, "timeout")
+    flag.Parse()
+
+    // Load client configuration from the YAML file
+    clientConfig, ok := clientconfig.Config("client").(*clientconfig.ClientConfig)
+    if !ok || clientConfig == nil {
+        log.Fatalf("Failed to load client configuration")
+    }
+
+    fmt.Printf("Loaded client configuration: %+v\n", clientConfig)
+
+    // Initialize dbClient with the loaded configuration
+    dbClient, err := client.NewClient(host, port, dbname, time.Duration(timeout)*time.Second, clientConfig)
+    if err != nil {
+        fmt.Println("Error initializing dbClient:", err)
+        return
+    }
+
+    fmt.Println("Debug - dbClient initialized successfully")
+
+    // Initialize CommandMap
+    CommandMap = map[string]interface{}{
+        CommandEnum.READ:    dbClient.Read,
+        CommandEnum.CREATE:    dbClient.Create,
+		CommandEnum.UPDATE: dbClient.Update,
+        CommandEnum.DELETE: dbClient.Delete,
+        CommandEnum.DEL:    dbClient.Delete,
+        CommandEnum.ID:     dbClient.GetID,
+    }
+
+    cli(host, port, dbname, timeout)
 }
