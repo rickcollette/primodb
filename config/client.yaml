@@ -3,7 +3,7 @@ version: 0.0.2
 
 server:
   host: "localhost"
-  port: 50051
+  port: 9969
   timeout: 3     # in seconds
 
 wal:

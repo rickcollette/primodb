@@ -81,6 +81,7 @@ func (c *PrimoDBClient) Del(key string) (string, error) {
 	return r.Message, err
 }
 
+
 // GetID returns the client id
 func (c *PrimoDBClient) GetID() string {
 	return c.ClientID

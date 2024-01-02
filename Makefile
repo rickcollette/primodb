@@ -1,19 +1,25 @@
-.PHONY: all build_client build_server proto clean
+.PHONY: all build_client build_server proto clean copy_config
 
 # Binary names
 CLIENT_BIN_PATH := dist/pdbc
 SERVER_BIN_PATH := dist/primod  # Corrected variable name
 
 # Directories
-CLIENT_MAIN_DIR := cmd/pdbc/main.go
+CLIENT_MAIN_DIR := primocli/main.go
 SERVER_MAIN_DIR := cmd/primod/main.go
 
 # Default target
-all: build_client build_server
+all: build_client build_server copy_config
 
 # Compile protocol buffers
 proto:
 	bash ./compile_proto.sh
+
+copy_config:
+	mkdir -p dist/config
+	mkdir -p dist/data
+	cp config/client.yaml dist/config
+	cp config/server.yaml dist/config
 
 # Build client binary
 build_client: proto
@@ -26,4 +32,4 @@ build_server: proto
 # Clean up
 clean:
 	rm -f $(CLIENT_BIN_PATH) $(SERVER_BIN_PATH)
-	rm -rf data
+	rm -rf dist

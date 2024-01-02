@@ -1,7 +1,7 @@
 server:
   host: "localhost"
   dbname: "defaultdb"
-  port: 50051
+  port: 9969
   timeout: 3
 
 wal:

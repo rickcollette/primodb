@@ -52,6 +52,7 @@ func (s *server) Del(ctx context.Context, req *pb.DelRequest) (*pb.DelResponse, 
 	return &pb.DelResponse{Message: value, RespMsg: respMsg, StatusCode: 204}, nil
 }
 
+
 func cleanup(db *database) {
 	if db != nil && db.walObj != nil {
 		db.walObj.Close()
