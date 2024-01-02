@@ -9,7 +9,28 @@ import (
 
 	"gopkg.in/yaml.v2"
 )
+// S3Config holds the configuration for S3 storage
+type S3Config struct {
+    Bucket    string `yaml:"bucket"`
+    Region    string `yaml:"region"`
+    AccessKey string `yaml:"accessKey"`
+    SecretKey string `yaml:"secretKey"`
+}
 
+// ServerConfig server
+type ServerConfig struct {
+    Server struct {
+        Host    string        `yaml:"host"`
+        Port    int           `yaml:"port"`
+        DB      string        `yaml:"dbname"`
+        Timeout time.Duration `yaml:"timeout"`
+    } `yaml:"server"`
+    Wal struct {
+        Datadir string   `yaml:"datadir"`
+        UseS3   bool     `yaml:"useS3"`
+        S3Config S3Config `yaml:"s3Config"`
+    } `yaml:"wal"`
+}
 const (
 	defaultClientConfigFile = "config/client.yaml"
 	defaultServerConfigFile = "config/server.yaml"
@@ -29,23 +50,11 @@ type ClientConfig struct {
 	} `yaml:"wal"`
 }
 
-// ServerConfig server
-type ServerConfig struct {
-	Server struct {
-		Host    string        `yaml:"host"`
-		Port    int           `yaml:"port"`
-		DB      string        `yaml:"dbname"`
-		Timeout time.Duration `yaml:"timeout"`
-	} `yaml:"server"`
-	Wal struct {
-		Datadir string `yaml:"datadir"`
-	} `yaml:"wal"`
-}
 
 func check(err error, methodSign string) {
 	msg := fmt.Sprintf("Failed while running method %s, Error %v", methodSign, err)
 	if !doPanic {
-		log.Printf(msg)
+		log.Print(msg)
 		return
 	}
 	if err != nil {
@@ -54,8 +63,8 @@ func check(err error, methodSign string) {
 }
 
 func loadServerConfig() (cfg *ServerConfig) {
-	configFile, err := os.ReadFile(defaultClientConfigFile)
-	check(err, "loadClientConfig")
+	configFile, err := os.ReadFile(defaultServerConfigFile)
+	check(err, "loadServerConfig")
 	err = yaml.Unmarshal(configFile, &cfg)
 	check(err, "loadServerConfig")
 	return cfg

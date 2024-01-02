@@ -9,43 +9,45 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-)
 
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/rickcollette/primodb/config"
+)
 const (
-	walExtension         = ".wal"
-	tmpWalExtension      = ".wal.tmp"
-	fMode                = os.FileMode(0644)
+	walExtension = ".wal"
+	tmpWalExtension = ".wal.tmp"
+	fMode = os.FileMode(0644)
 	walChannelBufferSize = 100
-	logSync              = true
+	logSync = true
 )
-
 // Record stores individual db command record. Each record
 // contains complete data about a command.
 type Record struct {
-	Seq  int64
+	Seq int64
 	Hash uint32
 	Data []byte
 }
-
 // Wal datatype
 type Wal struct {
 	baseSeq int64
-	seq     int64 // The wal file start sequence
+	seq int64 // The wal file start sequence
 	dirPath string
-	mu      sync.Mutex
-	file    *os.File
+	mu sync.Mutex
+	file *os.File
 	encoder *gob.Encoder
 	decoder *gob.Decoder
+	s3Uploader *s3manager.Uploader
+	s3Downloader *s3manager.Downloader
+	useS3 bool
+	s3Bucket string
 }
-
 func walName(seq int64) string {
 	return fmt.Sprintf("%016x.wal", seq)
 }
-
 func tmpWalName(seq int64) string {
 	return fmt.Sprintf("%016x.wal.tmp", seq)
 }
-
 // WalPath returns wal's absolute path
 func (w *Wal) walPath(isTmp bool) string {
 	dirPath := strings.TrimRight(w.dirPath, "/")
@@ -57,7 +59,6 @@ func (w *Wal) walPath(isTmp bool) string {
 	}
 	return fmt.Sprintf("%s%c%s", dirPath, os.PathSeparator, fileName)
 }
-
 // touchWal creates wal file, if it doesn't exists, & returns the fileObj for given path
 func (w *Wal) touchWal(path string) error {
 	// TODO use create instead?
@@ -65,13 +66,11 @@ func (w *Wal) touchWal(path string) error {
 	w.file = fileObj
 	return err
 }
-
 func (w *Wal) openFile(path string) error {
 	fileObj, err := os.Open(path)
 	w.file = fileObj
 	return err
 }
-
 func (w *Wal) nextseq() int64 {
 	w.seq++
 	return w.seq
@@ -84,7 +83,6 @@ func (w *Wal) newWalFile() error {
 		// TODO: check what error is this and make is specific
 		return err
 	}
-
 	if latestWal != nil {
 		walName := latestWal.Name()
 		seq, err := parseWalName(filepath.Base(walName))
@@ -103,7 +101,6 @@ func (w *Wal) newWalFile() error {
 	w.decoder = gob.NewDecoder(w.file)
 	return err
 }
-
 func (w *Wal) openWalFile() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -112,7 +109,6 @@ func (w *Wal) openWalFile() error {
 		// TODO: check what error is this and make is specific
 		return err
 	}
-
 	if latestWal == nil {
 		return ErrWalNotFound
 	}
@@ -130,9 +126,7 @@ func (w *Wal) openWalFile() error {
 	w.decoder = gob.NewDecoder(w.file)
 	return err
 }
-
 // Public methods
-
 // Verify runs through the wal file and returns error if wal is corrupted
 func (w *Wal) Verify() error {
 	var err error
@@ -151,14 +145,12 @@ func (w *Wal) Verify() error {
 		} else if !record.validHash() {
 			err = ErrInvalidWalData
 		}
-
 		if err != nil {
 			break
 		}
 	}
 	return err
 }
-
 // Rename the latest created WAL file
 func (w *Wal) Rename() (err error) {
 	if Exists(w.walPath(true)) == false {
@@ -167,32 +159,35 @@ func (w *Wal) Rename() (err error) {
 	err = os.Rename(w.walPath(true), w.walPath(false))
 	return err
 }
-
 // Close runs the cleanup tasks
 func (w *Wal) Close() {
 	w.Rename()
 	w.file.Close()
 }
-
 // Write appends the Record to WAL
 func (w *Wal) Write(data []byte) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-
 	record := &Record{Seq: w.nextseq(), Hash: CalculateHash(data), Data: data}
 	err := w.encoder.Encode(record)
 	if logSync {
 		Fsync(w.file)
 	}
+	if w.useS3 {
+		// Logic to upload the file to S3
+		filePath := w.walPath(false)
+		err := UploadToS3(w.s3Uploader, w.s3Bucket, filepath.Base(filePath), filePath)
+		if err != nil {
+			return err
+		}
+	}
 	return err
 }
-
 // Read the wal data from beginning till the end
 func (w *Wal) Read() chan *Record {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	rChan := make(chan *Record, walChannelBufferSize)
-
 	var err error
 	w.file.Seek(0, 0)
 	go func() {
@@ -219,12 +214,23 @@ func (w *Wal) Read() chan *Record {
 	}()
 	return rChan
 }
+func New(dirPath string, usesS3 bool, s3Config config.S3Config, s3Session *session.Session) (*Wal, error) {    
+    wal := Wal{dirPath: dirPath, useS3: usesS3}
 
-// New creates a new wal file returns the Wal object
-func New(dirPath string) (*Wal, error) {
-	wal := Wal{dirPath: dirPath}
-	err := wal.newWalFile()
-	return &wal, err
+    // Initialize the WAL file
+    err := wal.newWalFile()
+    if err != nil {
+        return nil, err
+    }
+
+    // Setup for S3 if usesS3 is true
+    if usesS3 {
+        wal.s3Bucket = s3Config.Bucket
+        wal.s3Uploader = s3manager.NewUploader(s3Session)
+        wal.s3Downloader = s3manager.NewDownloader(s3Session)
+    }
+
+    return &wal, nil
 }
 
 // Open opens the existing latest wal file for reading and returns a Wal object

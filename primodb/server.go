@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-const serverStartMsg = "MooDB server"
+const serverStartMsg = "PrimoDB server started."
 
 type server struct {
 	db     *database
@@ -59,9 +59,15 @@ func cleanup(db *database) {
 }
 
 func Run() {
-	cfg := config.Config("server").(*config.ServerConfig)
-	db := NewDb(cfg.Server.DB, cfg.Wal.Datadir)
-	defer cleanup(db)
+    cfg := config.Config("server").(*config.ServerConfig)
+
+    var db *database
+    if cfg.Wal.UseS3 {
+        db = NewDb(cfg.Server.DB, cfg.Wal.Datadir, true, cfg.Wal.S3Config)
+    } else {
+        db = NewDb(cfg.Server.DB, cfg.Wal.Datadir, false, config.S3Config{})
+    }
+    defer cleanup(db)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
