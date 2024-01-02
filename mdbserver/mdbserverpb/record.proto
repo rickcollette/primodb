@@ -1,5 +1,5 @@
 syntax = "proto3";
-option go_package="rickcollette/primodb/mdbserver/mdbserverpb";
+option go_package="github.com/rickcollette/primodb/mdbserver/mdbserverpb";
 package mdbserverpb;
 
 message Record {
