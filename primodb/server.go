@@ -4,52 +4,48 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"github.com/rickcollette/primodb/config"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"google.golang.org/grpc"
+	"github.com/rickcollette/primodb/config"
 	pb "github.com/rickcollette/primodb/primodb/primodproto"
+	"google.golang.org/grpc"
 )
 
 const serverStartMsg = "MooDB server"
 
-// server is used to implement MdbServer.
 type server struct {
 	db     *database
 	config *config.ServerConfig
 	pb.UnimplementedPrimoDBServer
 }
 
-// Get implements server side Mdb Get method
-func (s *server) Get(ctx context.Context, in *pb.GetRequest) (*pb.GetResponse, error) {
-	log.Printf("[Client: %s] GET: %s", in.ClientId, in.Key)
-	var respMsg string
-	value, err := s.db.Get(in.Key)
+func (s *server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
+	log.Printf("[Client: %s] GET: %s", req.ClientId, req.Key)
+	value, err := s.db.Get(req.Key)
+	respMsg := ""
 	if err != nil {
 		respMsg = err.Error()
 	}
 	return &pb.GetResponse{Value: value, RespMsg: respMsg, StatusCode: 200}, nil
 }
 
-// Set implements server side Mdb Set method
-func (s *server) Set(ctx context.Context, in *pb.SetRequest) (*pb.SetResponse, error) {
-	log.Printf("[Client: %s] SET: %s", in.ClientId, in.Key)
-	var respMsg string
-	value, err := s.db.Set(in.Key, in.Value)
+func (s *server) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, error) {
+	log.Printf("[Client: %s] SET: %s", req.ClientId, req.Key)
+	value, err := s.db.Set(req.Key, req.Value)
+	respMsg := ""
 	if err != nil {
 		respMsg = err.Error()
 	}
 	return &pb.SetResponse{Message: value, RespMsg: respMsg, StatusCode: 201}, nil
 }
 
-// Del implements server side Mdb del method
-func (s *server) Del(ctx context.Context, in *pb.DelRequest) (*pb.DelResponse, error) {
-	log.Printf("[Client: %s] DEL: %s", in.ClientId, in.Key)
-	var respMsg string
-	value, err := s.db.Del(in.Key)
+func (s *server) Del(ctx context.Context, req *pb.DelRequest) (*pb.DelResponse, error) {
+	log.Printf("[Client: %s] DEL: %s", req.ClientId, req.Key)
+	value, err := s.db.Del(req.Key)
+	respMsg := ""
 	if err != nil {
 		respMsg = err.Error()
 	}
@@ -57,37 +53,32 @@ func (s *server) Del(ctx context.Context, in *pb.DelRequest) (*pb.DelResponse, e
 }
 
 func cleanup(db *database) {
-	db.walObj.Close()
+	if db != nil && db.walObj != nil {
+		db.walObj.Close()
+	}
 }
 
-// Run setups and starts the MooDB server
 func Run() {
-	// Setup config
 	cfg := config.Config("server").(*config.ServerConfig)
-	// Create a fresh new DB instance.
 	db := NewDb(cfg.Server.DB, cfg.Wal.Datadir)
+	defer cleanup(db)
 
-	// Setup cleanup workflow
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		cleanup(db)
-		os.Exit(1)
+		fmt.Println("\nShutting down server...")
+		os.Exit(0)
 	}()
 
-	serverObj := &server{db: db, config: cfg}
-	serverAddr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
-	lis, err := net.Listen("tcp", serverAddr)
+	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatalf("Failed to listen: %v", err)
 	}
 
-	// Setup gRPC server
 	s := grpc.NewServer()
-	pb.RegisterPrimoDBServer(s, serverObj)
-	fmt.Println("*************\n", serverStartMsg, "\n*************")
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("Failed to serve: %v", err)
-	}
+	pb.RegisterPrimoDBServer(s, &server{db: db, config: cfg})
+	fmt.Printf("*************\n%s\n*************\n", serverStartMsg)
+	log.Fatal(s.Serve(lis))
 }

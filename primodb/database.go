@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"log"
 	"sync"
 
@@ -10,21 +11,20 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type Mode string
+
 const (
-	// Maybe this should be an ENUM
-	active   = "ACTIVE"
-	recovery = "RECOVERY"
+	ActiveMode   Mode = "ACTIVE"
+	RecoveryMode Mode = "RECOVERY"
 )
 
-// TODO: check can both database and KVStore use an interface?
-
-// database: main db object. It wraps the `memtable` methods.
+// database wraps the `memtable` methods and manages the WAL.
 type database struct {
 	db      *memtable.KVStore
 	name    string
-	mode    string // mode DB is currently running in. Can be recovery/active
+	mode    Mode
 	mu      sync.Mutex
-	rWalObj *wal.Wal // used during recovery
+	rWalObj *wal.Wal
 	walObj  *wal.Wal
 }
 
@@ -33,8 +33,7 @@ func (d *database) logRecord(cmd, key, value string) error {
 	if err != nil {
 		return err
 	}
-	err = d.walObj.Write(record)
-	return err
+	return d.walObj.Write(record)
 }
 
 func (d *database) Get(key string) (string, error) {
@@ -42,75 +41,75 @@ func (d *database) Get(key string) (string, error) {
 }
 
 func (d *database) Set(key, value string) (string, error) {
-	err := d.logRecord("SET", key, value)
-	if err != nil {
-		log.Fatal(err)
+	if err := d.logRecord("SET", key, value); err != nil {
+		return "", err // Don't use log.Fatal in library code
 	}
 	return d.db.Create(key, value)
 }
 
 func (d *database) Del(key string) (string, error) {
-	err := d.logRecord("DEL", key, "")
-	if err != nil {
-		log.Fatal(err)
+	if err := d.logRecord("DEL", key, ""); err != nil {
+		return "", err // Don't use log.Fatal in library code
 	}
 	return d.db.Delete(key)
 }
 
-func (d *database) recoverySet(key, value string) (string, error) {
-	return d.db.Create(key, value)
-}
-
-// toggleMode changes the db mode from active to recovery if in active mode
-func (d *database) setMode(mode string) {
+func (d *database) setMode(mode Mode) {
 	d.mode = mode
 }
 
 func NewDb(name, walDir string) *database {
-	db := &database{db: memtable.NewDB(), name: name}
+	db := &database{
+		db:   memtable.NewDB(),
+		name: name,
+	}
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	log.Println("Starting DB recovery")
-	var err error
-	func() {
-		db.setMode(recovery)
-		defer db.setMode(active)
-		recover := true
-		// Open recovery WAL file
-		db.rWalObj, err = wal.Open(walDir)
-		if err != nil {
-			if err == wal.ErrWalNotFound {
-				recover = false
-			} else {
-				log.Fatalf("Recovery: %s", err)
-			}
-		}
-		// Open new WAL tmp file
-		db.walObj, err = wal.New(walDir)
-		if err != nil {
-			log.Fatalf("Recovery: %s", err)
-		}
-		if recover {
-			rChan := db.rWalObj.Read()
-			for record := range rChan {
-				recordData := &primodproto.Record{}
-				err = proto.Unmarshal(record.Data, recordData)
-				// TODO handle error here
-				switch recordData.Cmd {
-				case "SET":
-					db.Set(recordData.GetKey(), recordData.GetValue())
-				case "DEL":
-					db.Del(recordData.GetKey())
-				default:
-					log.Fatal("Recovery: Invalid command")
-				}
-			}
-			// Free the recovery WAL object
-			db.rWalObj.Close()
-			db.rWalObj = nil
-		}
-	}()
+
+	db.setMode(RecoveryMode)
+	defer db.setMode(ActiveMode)
+
+	if err := db.recoverFromWAL(walDir); err != nil {
+		log.Fatalf("Recovery: %s", err)
+	}
 
 	log.Println("DB recovery finished")
 	return db
+}
+
+func (d *database) recoverFromWAL(walDir string) error {
+	var err error
+	d.rWalObj, err = wal.Open(walDir)
+	if err != nil {
+		if err == wal.ErrWalNotFound {
+			return nil // No WAL found, nothing to recover
+		}
+		return err
+	}
+	defer d.rWalObj.Close()
+
+	d.walObj, err = wal.New(walDir)
+	if err != nil {
+		return err
+	}
+
+	for record := range d.rWalObj.Read() {
+		recordData := &primodproto.Record{}
+		if err := proto.Unmarshal(record.Data, recordData); err != nil {
+			return err
+		}
+		switch recordData.Cmd {
+		case "SET":
+			_, err = d.Set(recordData.GetKey(), recordData.GetValue())
+		case "DEL":
+			_, err = d.Del(recordData.GetKey())
+		default:
+			return fmt.Errorf("invalid command during recovery: %s", recordData.Cmd)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
