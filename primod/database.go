@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/rickcollette/primodb/memtable"
-	"github.com/rickcollette/primodb/mdbserver/mdbserverpb"
+	"github.com/rickcollette/primodb/primod/primodproto"
 	"github.com/rickcollette/primodb/wal"
 	"google.golang.org/protobuf/proto"
 )
@@ -29,7 +29,7 @@ type database struct {
 }
 
 func (d *database) logRecord(cmd, key, value string) error {
-	record, err := proto.Marshal(&mdbserverpb.Record{Cmd: cmd, Key: key, Value: value})
+	record, err := proto.Marshal(&primodproto.Record{Cmd: cmd, Key: key, Value: value})
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func NewDb(name, walDir string) *database {
 		if recover {
 			rChan := db.rWalObj.Read()
 			for record := range rChan {
-				recordData := &mdbserverpb.Record{}
+				recordData := &primodproto.Record{}
 				err = proto.Unmarshal(record.Data, recordData)
 				// TODO handle error here
 				switch recordData.Cmd {

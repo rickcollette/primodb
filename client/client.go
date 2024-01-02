@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	pb "github.com/rickcollette/primodb/mdbserver/mdbserverpb"
+	pb "github.com/rickcollette/primodb/primod/primodproto"
 )
 
 const doPanic = true
@@ -24,28 +24,28 @@ func check(err error, methodSign string) {
 	}
 }
 
-// MdbClient stores unmarshalled client config data.
-type MdbClient struct {
+// PrimoDBClient stores unmarshalled client config data.
+type PrimoDBClient struct {
 	config   *config.ClientConfig
-	client   pb.MdbClient
+	client   pb.PrimoDBClient
 	conn     *grpc.ClientConn
 	ClientID string
 }
 
 // ServerAddress returns the address of mdb server.
-func (c *MdbClient) ServerAddress() string {
+func (c *PrimoDBClient) ServerAddress() string {
 	serverConfig := c.config.Server
 	return fmt.Sprintf("%s:%d", serverConfig.Host, serverConfig.Port)
 }
 
-func (c *MdbClient) setupClient() {
+func (c *PrimoDBClient) setupClient() {
 	// Set up a connection to the server.
 	conn, err := grpc.Dial(c.ServerAddress(), grpc.WithInsecure())
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
 	c.conn = conn
-	c.client = pb.NewMdbClient(conn)
+	c.client = pb.NewPrimoDBClient(conn) // Fix: Create a gRPC client using the connection and the generated client code.
 	// TODO look for alternative, handle error
 	// Generate UUID
 	id := uuid.New()
@@ -53,7 +53,7 @@ func (c *MdbClient) setupClient() {
 }
 
 // Get the value from server for a given key
-func (c *MdbClient) Get(key string) (string, error) {
+func (c *PrimoDBClient) Get(key string) (string, error) {
 	ctx, cancel := context.WithTimeout(
 		context.Background(), c.config.Server.Timeout*time.Second)
 	defer cancel()
@@ -63,7 +63,7 @@ func (c *MdbClient) Get(key string) (string, error) {
 }
 
 // Set grpc client
-func (c *MdbClient) Set(key, value string) (string, error) {
+func (c *PrimoDBClient) Set(key, value string) (string, error) {
 	ctx, cancel := context.WithTimeout(
 		context.Background(), c.config.Server.Timeout*time.Second)
 	defer cancel()
@@ -73,7 +73,7 @@ func (c *MdbClient) Set(key, value string) (string, error) {
 }
 
 // Del grpc client
-func (c *MdbClient) Del(key string) (string, error) {
+func (c *PrimoDBClient) Del(key string) (string, error) {
 	ctx, cancel := context.WithTimeout(
 		context.Background(), c.config.Server.Timeout*time.Second)
 	defer cancel()
@@ -83,19 +83,19 @@ func (c *MdbClient) Del(key string) (string, error) {
 }
 
 // GetID returns the client id
-func (c *MdbClient) GetID() string {
+func (c *PrimoDBClient) GetID() string {
 	return c.ClientID
 }
 
-func (c *MdbClient) Version() string {
+func (c *PrimoDBClient) Version() string {
 	return c.config.Version
 }
 
 // NewClient returns a configured client instance to interact with server
-func NewClient() MdbClient {
+func NewClient() PrimoDBClient {
 	// Load config
 	cfg := config.Config("client")
-	client := MdbClient{config: cfg.(*config.ClientConfig)}
+	client := PrimoDBClient{config: cfg.(*config.ClientConfig)}
 	client.setupClient()
 	return client
 }

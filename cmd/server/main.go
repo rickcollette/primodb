@@ -1,7 +1,7 @@
 package main
 
 import (
-	server "github.com/rickcollette/primodb/mdbserver"
+	server "github.com/rickcollette/primodb/primod"
 )
 
 func main() {

@@ -11,7 +11,7 @@ import (
 	"syscall"
 
 	"google.golang.org/grpc"
-	pb "github.com/rickcollette/primodb/mdbserver/mdbserverpb"
+	pb "github.com/rickcollette/primodb/primod/primodproto"
 )
 
 const serverStartMsg = "MooDB server"
@@ -20,7 +20,7 @@ const serverStartMsg = "MooDB server"
 type server struct {
 	db     *database
 	config *config.ServerConfig
-	pb.UnimplementedMdbServer
+	pb.UnimplementedPrimoDBServer
 }
 
 // Get implements server side Mdb Get method
@@ -85,7 +85,7 @@ func Run() {
 
 	// Setup gRPC server
 	s := grpc.NewServer()
-	pb.RegisterMdbServer(s, serverObj)
+	pb.RegisterPrimoDBServer(s, serverObj)
 	fmt.Println("*************\n", serverStartMsg, "\n*************")
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("Failed to serve: %v", err)

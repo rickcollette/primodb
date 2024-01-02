@@ -1,6 +1,6 @@
 syntax = "proto3";
-option go_package="github.com/rickcollette/primodb/mdbserver/mdbserverpb";
-package mdbserverpb;
+option go_package="github.com/rickcollette/primodb/primod/primodproto";
+package primodproto;
 
 message Record {
     string cmd = 1;
