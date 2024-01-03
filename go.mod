@@ -4,6 +4,7 @@ go 1.21.4
 
 require (
 	github.com/aws/aws-sdk-go v1.49.13
+	golang.org/x/crypto v0.14.0
 	google.golang.org/grpc v1.60.1
 	gopkg.in/yaml.v2 v2.4.0
 )

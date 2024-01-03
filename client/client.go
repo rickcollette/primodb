@@ -105,27 +105,45 @@ func (c *PrimoDBClient) Version() (string, error) {
 	}
 	return c.config.Version, nil
 }
-func NewClient(host string, port int, dbname string, timeout time.Duration, clientConfig *clientconfig.ClientConfig) (*PrimoDBClient, error) {
-	fmt.Printf("Debug - ClientConfig in NewClient: %+v\n", clientConfig)
-	address := fmt.Sprintf("%s:%d", host, port)
-	conn, err := grpc.Dial(address, grpc.WithInsecure()) // Establish the connection
-	if err != nil {
-		return nil, fmt.Errorf("did not connect: %v", err)
-	}
+func NewClient(host string, port int, dbname string, timeout time.Duration, clientConfig *clientconfig.ClientConfig, username, password string) (*PrimoDBClient, error) {
+    fmt.Printf("Debug - ClientConfig in NewClient: %+v\n", clientConfig)
 
-	client := PrimoDBClient{
-		client:   pb.NewPrimoDBClient(conn),
-		conn:     conn,
-		ClientID: uuid.New().String(), // Generate UUID
-		Timeout:  timeout,
-		config:   clientConfig,
-	}
-	version, err := client.Version()
-	if err != nil {
-		fmt.Println("Error getting version:", err)
-	} else {
-		fmt.Printf("Client version: %s\n", version)
-	}
+    address := fmt.Sprintf("%s:%d", host, port)
+    conn, err := grpc.Dial(address, grpc.WithInsecure())
+    if err != nil {
+        return nil, fmt.Errorf("did not connect: %v", err)
+    }
 
-	return &client, nil
+    // Initialize the client
+    client := PrimoDBClient{
+        client:   pb.NewPrimoDBClient(conn),
+        conn:     conn,
+        ClientID: uuid.New().String(),
+        Timeout:  timeout,
+        config:   clientConfig,
+    }
+
+    // Authenticate the user
+    ctx, cancel := context.WithTimeout(context.Background(), client.Timeout)
+    defer cancel()
+
+    authResp, err := client.client.Authenticate(ctx, &pb.AuthRequest{
+        Username: username,
+        Password: password,
+    })
+    if err != nil || !authResp.GetAuthenticated() {
+        return nil, fmt.Errorf("authentication failed: %v", err)
+    }
+
+    // Store the token in client for future requests
+    client.Token = authResp.GetToken()
+
+    version, err := client.Version()
+    if err != nil {
+        fmt.Println("Error getting version:", err)
+    } else {
+        fmt.Printf("Client version: %s\n", version)
+    }
+
+    return &client, nil
 }

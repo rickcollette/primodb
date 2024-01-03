@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package primodproto;
+
+option go_package = "github.com/rickcollette/primodb/primodproto";
+
+service PrimoDBService {
+    rpc Authenticate(AuthRequest) returns (AuthResponse);
+}
+
+message AuthRequest {
+    string username = 1;
+    string password = 2;
+}
+
+message AuthResponse {
+    bool authenticated = 1;
+    string token = 2;
+}

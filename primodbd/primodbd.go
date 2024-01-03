@@ -38,35 +38,43 @@ func (c *PrimoDBConn) Begin() (driver.Tx, error) {
     return nil, driver.ErrSkip
 }
 func (d *PrimoDBDriver) Open(dsn string) (driver.Conn, error) {
-	parsedURL, err := url.Parse(dsn)
-	if err != nil {
-		return nil, fmt.Errorf("invalid DSN: %v", err)
-	}
+    parsedURL, err := url.Parse(dsn)
+    if err != nil {
+        return nil, fmt.Errorf("invalid DSN: %v", err)
+    }
 
-	host := parsedURL.Hostname()
-	port, err := strconv.Atoi(parsedURL.Port())
-	if err != nil {
-		return nil, fmt.Errorf("invalid port: %v", err)
-	}
+    // Extract credentials from the DSN
+    username := parsedURL.User.Username()
+    password, _ := parsedURL.User.Password()
 
-	// Create a ClientConfig instance
-	clientConfig := &clientconfig.ClientConfig{
-		Server: struct {
-			Host    string        `yaml:"host"`
-			Port    int           `yaml:"port"`
-			Timeout time.Duration `yaml:"timeout"`
-		}{
-			Host:    host,
-			Port:    port,
-			Timeout: 5 * time.Second, // You can adjust the timeout as needed
-		},
-		// Set other fields of ClientConfig as needed
-	}
+    // Extract host and port
+    host := parsedURL.Hostname()
+    port, err := strconv.Atoi(parsedURL.Port())
+    if err != nil {
+        return nil, fmt.Errorf("invalid port: %v", err)
+    }
 
-	// Initialize PrimoDBClient with the new clientConfig
-	primoDBClient, _ := client.NewClient(host, port, "primodb", 5*time.Second, clientConfig)
+    // Create a ClientConfig instance
+    clientConfig := &clientconfig.ClientConfig{
+        Server: struct {
+            Host    string        `yaml:"host"`
+            Port    int           `yaml:"port"`
+            Timeout time.Duration `yaml:"timeout"`
+        }{
+            Host:    host,
+            Port:    port,
+            Timeout: 5 * time.Second, // Adjust timeout as needed
+        },
+        // Set other fields of ClientConfig as needed
+    }
 
-	return &PrimoDBConn{client: primoDBClient}, nil
+    // Initialize PrimoDBClient with the new clientConfig and credentials
+    primoDBClient, err := client.AuthenticatedClient(host, port, "primodb", 5*time.Second, clientConfig, username, password)
+    if err != nil {
+        return nil, fmt.Errorf("authentication failed: %v", err)
+    }
+
+    return &PrimoDBConn{client: primoDBClient}, nil
 }
 
 // Implement other necessary methods such as Prepare, Close, Begin, etc.

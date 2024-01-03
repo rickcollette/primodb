@@ -14,19 +14,38 @@
 
 
 [] WAL file lock
+type FileMetadata struct {
+    Filename       string   `json:"filename"`
+    Owner          string   `json:"owner"`
+    ReadonlyUsers  []string `json:"readonly_users"`
+    ReadwriteUsers []string `json:"readwrite_users"`
+    LockState      string   `json:"lockstate"`
+    FileAttr       string   `json:"fileattr"`
+    ShareAttr      string   `json:"shareattr"`
+}
 
-[] In-memory db snapshot
+func SaveFileMetadata(fileID string, metadata FileMetadata) error {
+    // Serialize metadata to JSON
+    metadataJSON, err := json.Marshal(metadata)
+    if err != nil {
+        return err
+    }
 
-[] Authentication
+    // Save to KVStore
+    _, err = store.Create(fileID, string(metadataJSON))
+    return err
+}
 
-[] Logging
+func GetFileMetadata(fileID string) (FileMetadata, error) {
+    metadataJSON, err := store.Read(fileID)
+    if err != nil {
+        return FileMetadata{}, err
+    }
 
-[] Error check. Is there a better approach then using check() method?
+    // Deserialize JSON back to struct
+    var metadata FileMetadata
+    err = json.Unmarshal([]byte(metadataJSON), &metadata)
+    return metadata, err
+}
 
-[] Client sends an unique id. Keep that in server, validate?
-
-## Improvements
-
-[] Create a .tmp directory and use .tmp files instead of writing to the file directly
-
-[] Check how to run cleanup tasks like closing wal when go program ends
+// Additional functions to update lock state, modify access lists, etc.
