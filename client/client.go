@@ -26,11 +26,13 @@ func check(err error, methodSign string) {
 }
 
 type PrimoDBClient struct {
-	config   *clientconfig.ClientConfig
-	client   pb.PrimoDBClient
-	conn     *grpc.ClientConn
-	ClientID string
-	Timeout  time.Duration // Add timeout field to specify request timeout
+    config            *clientconfig.ClientConfig
+    dbClient          pb.PrimoDBClient          
+    authServiceClient pb.PrimoDBServiceClient   
+    conn              *grpc.ClientConn
+    ClientID          string
+    Timeout           time.Duration
+    Token             string
 }
 
 // ServerAddress returns the address of mdb server.
@@ -46,7 +48,7 @@ func (c *PrimoDBClient) setupClient() {
 		log.Fatalf("did not connect: %v", err)
 	}
 	c.conn = conn
-	c.client = pb.NewPrimoDBClient(conn) // Fix: Create a gRPC client using the connection and the generated client code.
+	c.dbClient = pb.NewPrimoDBClient(conn) // Fix: Create a gRPC client using the connection and the generated client code.
 	// TODO look for alternative, handle error
 	// Generate UUID
 	id := uuid.New()
@@ -58,7 +60,7 @@ func (c *PrimoDBClient) Read(key string) (string, error) {
 	ctx, cancel := context.WithTimeout(
 		context.Background(), c.config.Server.Timeout*time.Second)
 	defer cancel()
-	r, err := c.client.Read(ctx, &pb.ReadRequest{Key: key, ClientId: c.ClientID})
+	r, err := c.dbClient.Read(ctx, &pb.ReadRequest{Key: key, ClientId: c.ClientID})
 	check(err, "Read")
 	return r.Value, err
 }
@@ -68,7 +70,7 @@ func (c *PrimoDBClient) Create(key, value string) (string, error) {
 	ctx, cancel := context.WithTimeout(
 		context.Background(), c.config.Server.Timeout*time.Second)
 	defer cancel()
-	r, err := c.client.Create(ctx, &pb.CreateRequest{Key: key, Value: value, ClientId: c.ClientID})
+	r, err := c.dbClient.Create(ctx, &pb.CreateRequest{Key: key, Value: value, ClientId: c.ClientID})
 	check(err, "Create")
 	return r.Message, err
 }
@@ -77,7 +79,7 @@ func (c *PrimoDBClient) Update(key, value string) (string, error) {
 	ctx, cancel := context.WithTimeout(
 		context.Background(), c.config.Server.Timeout*time.Second)
 	defer cancel()
-	r, err := c.client.Update(ctx, &pb.UpdateRequest{Key: key, Value: value, ClientId: c.ClientID})
+	r, err := c.dbClient.Update(ctx, &pb.UpdateRequest{Key: key, Value: value, ClientId: c.ClientID})
 	check(err, "Update")
 	return r.Message, err
 }
@@ -86,7 +88,7 @@ func (c *PrimoDBClient) Delete(key string) (string, error) {
 	ctx, cancel := context.WithTimeout(
 		context.Background(), c.config.Server.Timeout*time.Second)
 	defer cancel()
-	r, err := c.client.Delete(ctx, &pb.DeleteRequest{Key: key, ClientId: c.ClientID})
+	r, err := c.dbClient.Delete(ctx, &pb.DeleteRequest{Key: key, ClientId: c.ClientID})
 	check(err, "Delete")
 	return r.Message, err
 }
@@ -114,20 +116,20 @@ func NewClient(host string, port int, dbname string, timeout time.Duration, clie
         return nil, fmt.Errorf("did not connect: %v", err)
     }
 
-    // Initialize the client
     client := PrimoDBClient{
-        client:   pb.NewPrimoDBClient(conn),
+        dbClient: pb.NewPrimoDBClient(conn),
+        authServiceClient: pb.NewPrimoDBServiceClient(conn), // Create the authentication client
         conn:     conn,
         ClientID: uuid.New().String(),
         Timeout:  timeout,
         config:   clientConfig,
     }
 
-    // Authenticate the user
+    // Authenticate the user using the authServiceClient
     ctx, cancel := context.WithTimeout(context.Background(), client.Timeout)
     defer cancel()
 
-    authResp, err := client.client.Authenticate(ctx, &pb.AuthRequest{
+    authResp, err := client.authServiceClient.Authenticate(ctx, &pb.AuthRequest{
         Username: username,
         Password: password,
     })

@@ -69,8 +69,8 @@ func (d *PrimoDBDriver) Open(dsn string) (driver.Conn, error) {
     }
 
     // Initialize PrimoDBClient with the new clientConfig and credentials
-    primoDBClient, err := client.AuthenticatedClient(host, port, "primodb", 5*time.Second, clientConfig, username, password)
-    if err != nil {
+    primoDBClient, err := client.NewClient(host, port, "primodb", 5*time.Second, clientConfig, username, password)
+        if err != nil {
         return nil, fmt.Errorf("authentication failed: %v", err)
     }
 

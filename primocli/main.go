@@ -48,6 +48,8 @@ var (
 	port               int
 	dbname             string
 	timeout            int
+	username		   string
+	password		   string
 )
 var CommandMap map[string]interface{}
 // CommandMap map of command enum => command method
@@ -99,76 +101,79 @@ func processedCmd(input string) (string, string, string, error) {
 	return cmd, key, value, err
 }
 
-// cli is the main CLI loop
 func cli(host string, port int, dbname string, timeout int) {
-	var result string
-	log.SetFlags(0)
-	reader := bufio.NewReader(os.Stdin)
+    var result string
+    log.SetFlags(0)
+    reader := bufio.NewReader(os.Stdin)
 
-	// Recover if server is down
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("Error raised while connecting to the server, Error(%s)\n", r)
-		}
-	}()
+    // Recover if server is down
+    defer func() {
+        if r := recover(); r != nil {
+            fmt.Printf("Error raised while connecting to the server, Error(%s)\n", r)
+        }
+    }()
 
-	for {
-		fmt.Printf("primodb > ")
-		input, err := reader.ReadString('\n')
-		if err != nil {
-			log.Fatal(err)
-		}
+    for {
+        fmt.Printf("primodb > ")
+        input, err := reader.ReadString('\n')
+        if err != nil {
+            log.Fatal(err)
+        }
 
-		cmd, key, value, err := processedCmd(input)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
+        cmd, key, value, err := processedCmd(input)
+        if err != nil {
+            log.Println(err)
+            continue
+        }
 
-		// Handle special commands
-		switch cmd {
-		case QuitCommand, ExitCommand, QCommand:
-			fmt.Println("Exiting PrimoDB CLI.")
-			os.Exit(0)
-		case VersionCommand:
-			if dbClient == nil {
-				fmt.Println("Error: Database client is not initialized.")
-			} else {
-				version, err := dbClient.Version()
-				if err != nil {
-					fmt.Println("Error getting version:", err)
-				} else {
-					fmt.Println("PrimoDB Version:", version)
-				}
-			}
-			continue		
-		case HelpCommand:
-			printHelp()
-			continue
-		}
+        // Handle special commands
+        switch cmd {
+        case QuitCommand, ExitCommand, QCommand:
+            fmt.Println("Exiting PrimoDB CLI.")
+            os.Exit(0)
+        case VersionCommand:
+            if dbClient == nil {
+                fmt.Println("Error: Database client is not initialized.")
+            } else {
+                version, err := dbClient.Version()
+                if err != nil {
+                    fmt.Println("Error getting version:", err)
+                } else {
+                    fmt.Println("PrimoDB Version:", version)
+                }
+            }
+            continue
+        case HelpCommand:
+            printHelp()
+            continue
+        }
 
-		method, ok := CommandMap[cmd]
-		if !ok {
-			log.Println(ErrInvalidCommand)
-			continue
-		}
+        // Execute the command
+        switch cmd {
+        case CommandEnum.READ:
+            result, err = dbClient.Read(key)
+        case CommandEnum.CREATE:
+            result, err = dbClient.Create(key, value)
+        case CommandEnum.UPDATE:
+            result, err = dbClient.Update(key, value)
+        case CommandEnum.DELETE, CommandEnum.DEL:
+            result, err = dbClient.Delete(key)
+        case CommandEnum.ID:
+            result = dbClient.GetID()
+            err = nil
+        default:
+            log.Println(ErrInvalidCommand)
+            continue
+        }
 
-		// Execute the command
-		if key == "" && value == "" {
-			result, err = method.(func() string)(), nil
-		} else if value == "" {
-			result, err = method.(func(string) (string, error))(key)
-		} else {
-			result, err = method.(func(string, string) (string, error))(key, value)
-		}
-
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		fmt.Println(result)
-	}
+        if err != nil {
+            log.Println(err)
+            continue
+        }
+        fmt.Println(result)
+    }
 }
+
 func printHelp() {
 	fmt.Println("PrimoDB Commands:")
 	fmt.Println("  READ <key>             - Retrieve the value for the given key.")
@@ -186,6 +191,8 @@ func main() {
     flag.IntVar(&port, "port", 9969, "port")
     flag.StringVar(&dbname, "dbname", "primodb", "dbname")
     flag.IntVar(&timeout, "timeout", 5, "timeout")
+    flag.StringVar(&username, "username", "", "username")
+    flag.StringVar(&password, "password", "", "password")
     flag.Parse()
 
     // Load client configuration from the YAML file
@@ -197,7 +204,7 @@ func main() {
     fmt.Printf("Loaded client configuration: %+v\n", clientConfig)
 
     // Initialize dbClient with the loaded configuration
-    dbClient, err := client.NewClient(host, port, dbname, time.Duration(timeout)*time.Second, clientConfig)
+    dbClient, err := client.NewClient(host, port, dbname, time.Duration(timeout)*time.Second, clientConfig, username, password)
     if err != nil {
         fmt.Println("Error initializing dbClient:", err)
         return

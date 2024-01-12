@@ -15,14 +15,15 @@ func (s *server) StoreUserCredentials(ctx context.Context, username, password st
         return err // or handle error appropriately
     }
 
-    // Store in the 'users' database
-    _, err = s.db.GetDatabase("users").Create("user:"+username, string(hashedPassword))
+    // Access the 'users' database and store the hashed password
+    db := s.db.dbStore.GetDatabase("users") // Access 'users' database
+    _, err = db.Create("user:"+username, string(hashedPassword))
     return err
 }
 
 func (s *server) Authenticate(ctx context.Context, req *pb.AuthRequest) (*pb.AuthResponse, error) {
     // Retrieve hashed password from the 'users' database
-    hashedPassword, err := s.db.GetDatabase("users").Read("user:" + req.Username)
+    hashedPassword, err := s.db.dbStore.GetDatabase("users").Read("user:" + req.Username)
     if err != nil {
         // Handle error (e.g., user not found)
         return &pb.AuthResponse{Authenticated: false}, err
